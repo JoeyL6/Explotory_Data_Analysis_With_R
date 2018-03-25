@@ -1,0 +1,517 @@
+EDA of Prosper Marketplace loan data by Zhaowei Liang
+========================================================
+
+
+# 1. Introduction and data wrangling
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+# Load all of the packages that you end up using in your analysis in this code
+# chunk.
+
+# Notice that the parameter "echo" was set to FALSE for this code chunk. This
+# prevents the code from displaying in the knitted HTML output. You should set
+# echo=FALSE for all code chunks in your file, unless it makes sense for your
+# report to show the code that generated a particular plot.
+
+# The other parameters for "message" and "warning" should also be set to FALSE
+# for other code chunks once you have verified that each plot comes out as you
+# want it to. This will clean up the flow of your report.
+
+library(ggplot2)
+library(anytime)
+library(dplyr)
+library(GGally)
+```
+
+```{r echo=FALSE, Load_the_Data}
+# Load the Data
+raw <- read.csv("prosperLoanData.csv")
+```
+
+```{r}
+#review variables
+names(raw)
+```
+
+The dataset contains more than 100,000 loans't data with 81 features for each loan from Prosper Marketplace Loan company. The [dictionary](https://docs.google.com/spreadsheets/d/1gDyi_L4UvIrLTEC6Wri5nbaMmkGmLQBk-Yx3z0XDEtI/edit#gid=0) described what does each variable represents. The variables that worth investigating was picked by my limited knowledge in finance. However, later in the analysis, more variables might be added in analysis according to correlations between variables. 
+
+```{r}
+#pick features of interest can organize them in to a list
+selected_features <- c('ListingKey', 'ListingCreationDate', 'Term', 'LoanStatus', 'CreditGrade', 
+                      'ListingCategory..numeric.', 'ProsperScore', 'BorrowerState', 'Occupation',
+                      'EmploymentStatusDuration', 'IsBorrowerHomeowner', 'CreditScoreRangeLower', 'CreditScoreRangeUpper',
+                      'IncomeRange', 'IncomeVerifiable', 'TotalCreditLinespast7years', 'TotalProsperLoans',
+                      'LoanOriginationDate', 'LoanOriginalAmount', 'PercentFunded', 'Investors', 'StatedMonthlyIncome'
+                     )
+```
+
+```{r}
+#subset picked features from the raw dataset according to the list created in last chunk
+loan_df = raw[, selected_features]
+```
+
+```{r}
+str(loan_df)
+```
+
+```{r}
+names(loan_df)
+```
+
+20 variables and 113937 observation are picked for analyzing. 
+
+```{r}
+#create a new column contains only years of all listing
+loan_df$ListingCreationDate <- anydate(loan_df$ListingCreationDate)
+loan_df$ListingCreationYear <- strftime(loan_df$ListingCreationDate, "%Y")
+```
+
+```{r}
+loan_year <- table(loan_df$ListingCreationYear)
+print(loan_year)
+```
+
+```{r}
+#ggplot(data = loan_df, aes(ListingCreationYear)) + geom_bar(aes(x = ListingCreationYear, y = freq), stat="identity")
+```
+
+# 2. Univariate Plots Section
+
+## 2.1 Borrowers' states
+Geographical information is critical for the growth of a company. Firstly, analyze what state owns the most of loans on Proser Marketplace. However, since the population density is vary from state to state, this result may be less informative than people normally think.
+
+```{r}
+ggplot(loan_df,aes(x=reorder(BorrowerState,BorrowerState,
+                     function(x)+length(x)))) + 
+        geom_bar() + coord_flip() + ggtitle("Counts of loans by US states") +
+  xlab("States' name abbreviated") + ylab("Number of Loans at Prosper Marketplace")
+                             
+```
+
+```{r}
+table(loan_df$BorrowerState)
+
+```
+
+From the bar plot above, we can see that California has most total loans. Meanwhile, the total number of loans distributed similarly as population. One interesting find is there are 5515 loans has unkonwn state, are they from out of United States or it is data entry error? It is hard to allocate these loans to a specific states without additional data from Prosper Marketplace.
+
+## 2.2 Occupation
+Will loaner's occupation affects there chance of getting investors? Is there any occupation discriminate on Prosper MarketPlace? To better answer these question, total amount of loans for different occupations are analyzed first. 
+
+```{r}
+ggplot(loan_df,aes(x=reorder(Occupation,Occupation,
+                     function(x)+length(x)))) + 
+        geom_bar() + coord_flip() + ggtitle("Total number of loans by occupation") +
+  xlab("Occupation") + ylab("Number of Loans")
+```
+
+Obviously, the dropdown menu on Prosper Marketplaces's website is not exhaustive. The occupation "Other" siginificantly skewed the distribution.
+
+## 2.3 Employment Status Duration
+
+```{r}
+sample(loan_df$EmploymentStatusDuration, 15)
+```
+
+```{r}
+ggplot(data = subset(loan_df, !is.na(EmploymentStatusDuration)), aes(EmploymentStatusDuration)) + 
+       geom_histogram(stat = "bin", binwidth = 10)
+```
+
+As shown in the graph above, most of the loaners provided employement data on this website do have a fairly short employment status history.
+
+## 2.4 Credit Score
+The credit score records is dvided into two features: 
+1. CreditScoreRangeLower
+2. CreditScoreRangeUpper
+Firstly, the relationship between this two features is determined.
+
+```{r}
+loan_df$creditrange <- loan_df$CreditScoreRangeUpper - loan_df$CreditScoreRangeLower
+table(loan_df$creditrange)
+```
+
+```{r}
+table(loan_df$CreditScoreRangeUpper)
+```
+
+As show above, the the creditscorerangeupper is mostly 19 more than the creditscorerangelower. According to the properties of expected values. Only one of these variables needs to analyzed. 
+
+```{r}
+ggplot(data = subset(loan_df, !is.na(CreditScoreRangeUpper)), aes(CreditScoreRangeUpper)) + 
+       geom_histogram(stat = "bin", binwidth = 10)
+```
+
+As shown above, the distribution of credit score shows approximate normal distribution if we neglect outliers at 19.
+
+## 2.5 Income Range
+
+```{r}
+table(loan_df$IncomeRange)
+```
+
+```{r}
+ggplot(loan_df,aes(IncomeRange)) + 
+        geom_bar() + coord_flip()
+```
+
+As show in the graph above, the income range of lenders is a good representation of financial state of lenders. Quite a number of incomes is not displayed. But mostly the income range of lenders is concentrated below $50,000.
+
+## 2.6 Total Credit Line
+
+```{r}
+ggplot(data = subset(loan_df, !is.na(TotalCreditLinespast7years)), aes(TotalCreditLinespast7years)) + 
+       geom_histogram(stat = "bin", binwidth = 3)
+```
+
+## 2.7 Loan Origination Date
+The purpose of analyzing loan origination date is verify of the data
+
+```{r}
+loan_df$LoanOriginationDate <- anydate(loan_df$LoanOriginationDate)
+loan_df$LoanOriginationYear <- strftime(loan_df$LoanOriginationDate, "%Y")
+```
+
+```{r}
+ggplot(loan_df,aes(LoanOriginationYear )) + 
+        geom_bar()
+```
+
+## 2.8 Loan amount
+
+```{r}
+ggplot(data = subset(loan_df, !is.na(LoanOriginalAmount)), aes(LoanOriginalAmount)) + 
+       geom_histogram(stat = "bin", binwidth = 4000)
+```
+
+```{r}
+amount_list <- sort(table(loan_df$LoanOriginalAmount), decreasing = T)
+head(amount_list, 20)
+```
+
+Most of the loan amount is on numbers that looks more "integer" like 4000, 15000 insteand 15232 or 4355. Because the Prosper MarketPlace doesn't gurantee this amount will be fully funded, its make sense that most lenders put a approximate number to take the most from investers.
+
+## 2.10 Number of investors
+
+```{r}
+ggplot(data = subset(loan_df, !is.na(Investors)), aes(Investors)) + 
+       geom_histogram(stat = "bin", binwidth = 60)
+```
+
+## 2.11 Loan status (Main Feature)
+There are multiple status of loans per data dictionary:
+
+Cancelled
+Chargedoff
+Completed
+Current
+Defaulted
+FinalPaymentInProgress
+Past due(Followed by buckets)
+
+```{r}
+levels(loan_df$LoanStatus)
+```
+
+```{r}
+ggplot(loan_df,aes(LoanStatus)) + 
+        geom_bar() + coord_flip()
+```
+
+As seen in this graph, the mojority of loans is in their "Current" Status. Becuase the loan status is also the main feature of our analysis, we need to go one step further on.
+
+The loans status feature has 12 levels:
+
+```{r}
+levels(loan_df$LoanStatus)
+```
+
+To make the analsis easier in later stage, these levels will be divided into 2 groups: Good loans and Bad loans, in the other word, the deliquency state of loans. After read the wikipedia and investopedia page of these words, they are divided as follow:
+
+- Good loans():
+    - Cancelled
+    - Completed
+    - Current
+    - FinalPaymentInProgress
+    - Past Due (1-15 days) 
+    - Past Due (16-30 days)
+
+- bad (deliquented) loans:
+    - Chargedoff
+    - Defaulted
+    - Past Due (>120 days) 
+    - Past Due (31-60 days) 
+    - Past Due (61-90 days) 
+    - Past Due (91-120 days)
+
+A new column called "DeliquencyState" is created based on the creteria above. Under this column, 1 represent loans with deliquencies and 0 represents loans without deliquencies.
+
+```{r}
+loan_df$DeliquencyState <- ifelse(
+                                      loan_df$LoanStatus == "Chargedoff" |
+                                      loan_df$LoanStatus == "Defaulted" |
+                                      loan_df$LoanStatus == "Past Due (>120 days)" |
+                                      loan_df$LoanStatus == "Past Due (31-60 days)" |
+                                      loan_df$LoanStatus == "Past Due (61-90 days)" |
+                                      loan_df$LoanStatus == "Past Due (91-120 days)",
+                                       'delinquent', 'GoodStanding')
+```
+
+```{r}
+table(loan_df$DeliquencyState)
+```
+
+```{r}
+ggplot(data = loan_df, aes(DeliquencyState, fill = factor(LoanStatus))) + geom_bar()
+```
+
+## 2.12 Univariate Analysis
+
+
+### What is the structure of your dataset?
+
+At the beginning of univariate analysis
+
+### What is/are the main feature(s) of interest in your dataset?
+
+The main features of interest in my analysis are the status of the loan and the number of investors. 
+
+There are multiple status of loans per data dictionary:
+
+Cancelled
+Chargedoff
+Completed
+Current
+Defaulted
+FinalPaymentInProgress
+Past due(Followed by buckets) ...
+
+They are divided and regrouped into a new feature: DeliquencyState which is now the feature of interest.
+
+
+
+### What other features in the dataset do you think will help support your \ investigation into your feature(s) of interest?
+
+'ListingKey' 'ListingCreationDate' 'Term' 'LoanStatus' 'CreditGrade' 'ListingCategory..numeric.' 'ProsperScore' 'BorrowerState' 'Occupation' 'EmploymentStatusDuration' 'IsBorrowerHomeowner' 'CreditScoreRangeLower' 'CreditScoreRangeUpper' 'IncomeRange' 'IncomeVerifiable' 'TotalCreditLinespast7years' 'TotalProsperLoans' 'LoanOriginationDate' 'LoanOriginalAmount' 'PercentFunded' 'Investors' 'ListingCreationYear' 'creditrange' 'LoanOriginationYear' 'DeliquencyState'
+
+### Did you create any new variables from existing variables in the dataset?
+
+Yes, I created two variables to help my analysis:
+1. LoanOriginationYear: this variable is parsed from LoanOriginationDate data in order to determine if the sample are radomly picked through years.
+
+2. DeliquencyState: a binary column to determine the status of a loan. This variable is regrouped from loan status feature. 
+
+### Of the features you investigated, were there any unusual distributions? \ Did you perform any operations on the data to tidy, adjust, or change the form \ of the data? If so, why did you do this?
+
+I changed the data type of LoanOriginationDate to datetime so I can parse the year of loan origination much easier.
+
+
+
+
+# 3. Bivariate Plots Section
+
+This section is divided into 3 parts:
+1. Relationship between loan status and support features.
+2. Relationship between number of investors and supporting features
+3. Relationship between some supporting features
+
+## 3.1 Loan status (Deliquency State )
+
+## 3.1.1 Deliquency State and  Employment Status Duration
+
+```{r}
+ggplot(data = loan_df, aes(x = DeliquencyState, y = CreditScoreRangeUpper)) + 
+      geom_boxplot()
+```
+
+## 3.1.2 Deliquency State and  Income Range
+
+```{r}
+ggplot(data = loan_df, aes(IncomeRange, fill = factor(DeliquencyState))) + geom_bar() + coord_flip()
+```
+
+Although it is obvious that borrowers that has income range from 25,000 to 49,999 has most of the delinquent loans, they also has most of loans in general. A more reasonable feature in this kind case would be the percent of deliquent loans compare to the total loans in that income range.
+
+## 3.1.3 Deliquency State and  loan original amount
+
+```{r}
+ggplot(data = loan_df, aes(x = DeliquencyState, y = LoanOriginalAmount)) + 
+      geom_boxplot()
+```
+
+In contraray to the intuition, delinquent loans has lower loan amount compare to good standing loans. I was expecting delinquent has higher loan amount which makes them harder to payoff.
+
+## 3.1.3 Deliquency State and employment duration
+
+```{r}
+ggplot(data = loan_df, aes(x = DeliquencyState, y = EmploymentStatusDuration)) + 
+      geom_boxplot()
+```
+
+The boxplot, in this case, does not make too much sense because of significant amount of data points that out of  quantiles from the mean. Because of that, I used the point plot to have visulize the employement duration.
+
+## 3.2.1 Number of Investors and loan category
+Because all listing categories are in numeric forms, it is necessary to map the english descriptvie name to them according to the data dictionary.
+
+```{r}
+#convert numeric values lvevel names to factor level names
+#Input category names 
+CategoryName <- c("Not Available", "Debt Consolidation", "Home Improvement", "Business", "Personal Loan", 
+                     "Student Use", "Auto", "Other", "Baby&Adoption", "Boat", "Cosmetic Procedure", 
+                      "Engagement Ring", "Green Loans","Household Expenses", "Large Purchases", "Medical/Dental", 
+                     "Motorcycle", "RV", "Taxes", "Vacation", "Wedding Loans")
+#create a new column and map full category name on this new column
+loan_df$ListingCategory <- CategoryName[(loan_df$ListingCategory..numeric.)+1]
+
+ggplot(data = loan_df, aes(ListingCategory, Investors)) + geom_boxplot() + coord_flip()
+```
+
+## 3.2.2 Number of Investors and credit score
+
+Will higher credit score attract more investors? A scatter plot with trend line might be able answer this question.
+
+```{r}
+ggplot(data = loan_df, aes(x=CreditScoreRangeUpper, y=Investors)) + geom_point(shape=1) + 
+        geom_smooth() + xlim(100, 1000)
+```
+
+Since it is barely possible for a person has credit score of 0, I only plotted loans with credit score above 0.
+Although the relationship between credit score and is approximately position, it is noticeable that there is a downward trend after credit score go over 780.
+
+## 3.2.3 Number of Investors and credit score
+
+```{r}
+ggplot(data = loan_df, aes(IncomeVerifiable, Investors)) + geom_boxplot()
+```
+
+Interestingly, weather the income verifiable does not have obvious influence on the number of investors. 
+
+## 3.3.1 Loan original amount and loan category
+
+```{r}
+ggplot(data = loan_df, aes(ListingCategory, LoanOriginalAmount)) + geom_boxplot() + coord_flip()
+```
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \ investigation. How did the feature(s) of interest vary with other features in \ the dataset?
+
+1. For the deliquency of loans, the duration of employement and credit score seems have most obvious relationship with the deliquency state. Longer employement history and higher the credit score seems relevant to lesser deliquent loans.
+
+2. As of the number of investors, the credit score and loan categories both have effects. The credit score has much more significant effects on the number compare to loan categories. The number of investors increased as the credit score goes up. 
+
+### Did you observe any interesting relationships between the other features \ (not the main feature(s) of interest)?
+
+The debt consolidation has highest median for loan amount amoung all other categories. Medical and dental loans does not own a high loan amount. The reason might be the residents of United States heavily rely on insurance and law service for health coverage. 
+
+### What was the strongest relationship you found?
+
+The strongest I found is the relationship between credit score and the number of investor. 
+
+
+# 4. Multivariate Plots Section
+
+## 4.1 Pearson Correlation
+
+Although not all features in this analysis is numeric, its still pretty reasonalbe to start the analysis with pearson correlation matrix
+
+```{r}
+ggcorr(data = loan_df, label = TRUE, size = 3, hjust = 1) 
+```
+
+From the correlation plot above, we found fairly strong correlations between Investors and loan amount, credit score and prosper score. These three variables will be explored deeper in next plot. However, it is also necessary to keep in mind that ProsperScore have high correlations of .4 with creditrange. 
+
+## 4.2 Credit score, prosperscore, loan original amount and number of investors
+
+```{r}
+fit <- lm(Investors ~ LoanOriginalAmount + CreditScoreRangeUpper, data = loan_df) 
+```
+
+```{r}
+```
+
+```{r}
+summary(fit)
+```
+
+The amateur regression model here does not represent the actual relationship between scores, loan amount and the number invester. Instead, p value less than 0.05 shows credit scores and loan amount do have statistically significant impact on the number of investers.
+
+# 4.3 Deliquency state with loan amount and credit score
+
+```{r}
+ggplot(data = loan_df, aes(StatedMonthlyIncome, CreditScoreRangeUpper, colour = factor(DeliquencyState))) + 
+geom_point(alpha = 0.1) + xlim(0, 10000)
+```
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+Relationship between number of investors and credit scores, derived in bivariate analysis are used in conjuntion with the original loan amount in multivariate. The result is significant, these two variables can be used together to built a regression model to predict the number of investors. 
+
+### Were there any interesting or surprising interactions between features?
+
+Seems the prosper score, which is the socre assigned by prosper loan marketplace has strong correlation with the credit score assigned by credit union. This is either because the prosper loan market place assign their score based on credit score from credit union or people's bevaior on the prosper market place reflect their general credit behavior.
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the \
+strengths and limitations of your model.
+
+I tried to build a model based as: Investors ~ LoanOriginalAmount + CreditScoreRangeUpper. However, some spricification for linear regression is break, since the purpose is not to build a successful but to identify the general trend between variables, I didn't dived further onto this model. 
+
+------
+
+# 5. Final Plots and Summary
+
+### Plot One
+
+```{r echo=FALSE, Plot_One}
+ggplot(data = loan_df, aes(StatedMonthlyIncome, CreditScoreRangeUpper, colour = factor(DeliquencyState))) + 
+geom_point(alpha = 0.1) + xlim(0, 10000) + labs(title ="Deliquency state vs Stated Monthly Income and Credit Score")
+```
+
+Even the deliquency status of loans in significant impacted by the credit score of borrowers, the monthly income also plays a role in the behavior of deliquency status. For this plot, it is obvious that lower credit score implies higher chance of deliquent loans. Borrowers with higher monthly income will have higher credit score and higher chance of pay out their loans.
+
+### Plot Two
+
+```{r echo=FALSE, Plot_Two}
+layout(matrix(c(1,2,3,4),2,2))
+plot(fit, main="Investors vs Loan Amount + Credit Score")
+```
+
+From the Q-Q plot, it can ben seen that the distribution of investors is not normal, which is also shwon in the univariate analysis. 
+From the Leverage plot, there's a outlier located on the left of the graph. This group of points indicate that there are mulitple outliers while doing the regression.
+From the residual plot, it can be seen that as the number of investors goes large, its become harder and harder to predict the number of investors. 
+
+### Plot Three
+
+```{r echo=FALSE, Plot_Three}
+ggplot(data = loan_df, aes(x = DeliquencyState, y = LoanOriginalAmount)) + 
+      geom_boxplot()+labs(title ="Deliquency state vs Stated Monthly Income and Credit Score")
+```
+
+From this plot, we got a interesting finding that loans with higher loan original amount owns bettwe chance of good standing at the end. There couple theories for this behaviors. Firstly, this might because these loan has longer payment cycle so that they are still going through the pay back cycle. It coule also because borrowers borrowed a lot from loan companies tend to making better judgement of their financial situation.
+
+------
+
+# 6. Reflection
+
+The Prosper Marketplace is the first P2P loan marketplace in the United States and still operating today. This data set from Prosper Market place contains 81 variables and 113,937 observations. I picked about 20 features for analyzing. 
+
+Started from univariate analysis, I tried to understand the distribution of indivisual variables by using bar-plots and hitograms. I was expecting find much normal behaved variables but suprised by the log-normal and reversed lognormal behaviors found in these variables. For example, both the loan original amount and total credit line in past 7 years showing log normal behaviors. The number of investors ia also showing log-normal distribution in some sense. 
+
+I was struggled while doing linear regresssion about the number of investors. Specificly, although the number of investors, credit score and original loan amount are positively correlated, all specifications for linera regression are failed to hold. However, the dianosis plot successfully dipicted issues with the regression and helped the analysis. The ANOVA table indicated that both the credit score and the original loan amount is significant when predicting the number of investors. 
+
+Because of the good balance between categorical variables and numerical variables as well as the abundantness of information. I think this dataset would be a good resource for machine learning and neural network. I belive that after encode all categorical variables and apply machine learning algorithm, a impressive result is guaranteed.
+
+## 7 Reference
+
+https://yihui.name/knitr/options/
+
+https://www.rstudio.com/wp-content/uploads/2015/03/ggplot2-cheatsheet.pdf
+
+https://www.statmethods.net/stats/regression.html
+
+https://stackoverflow.com/questions/41205489/different-fill-values-for-different-factors-in-ggplot2
